@@ -1,2 +1,3 @@
 add_subdirectory(01_colorful_renderer)
 add_subdirectory(02_imgui_sdl3gpu)
+add_subdirectory(03_triangle)
