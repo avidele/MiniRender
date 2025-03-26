@@ -2,10 +2,11 @@
  * @Author: Avidel_Arch 1215935448@qq.com
  * @Date: 2025-03-23 23:58:13
  * @LastEditors: nolanyzhang
- * @LastEditTime: 2025-03-26 01:12:47
+ * @LastEditTime: 2025-03-26 22:48:39
  * @FilePath: /MiniRender/examples/03_triangle/main.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AEN
  */
+#include <cstddef>
 #include <vector>
 #define SDL_MAIN_USE_CALLBACKS
 #include "SDL3/SDL_init.h"
@@ -99,6 +100,28 @@ void InitVulkan(){
         std::cout << "Vulkan device: " << deviceProperties.deviceName << std::endl;
     }
 #endif
+    sdlVkInstance->physicalDevice = devices[0];
+
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = 0,
+        .queueCount = 1,
+        .pQueuePriorities = &queuePriority,
+    };
+
+    VkDeviceCreateInfo deviceCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &queueCreateInfo,
+    };
+
+    if(vkCreateDevice(sdlVkInstance->physicalDevice, &deviceCreateInfo, nullptr, &sdlVkInstance->device) != VK_SUCCESS){
+        std::cerr << "Failed to create Vulkan device!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    vkGetDeviceQueue(sdlVkInstance->device, 0, 0, &sdlVkInstance->graphicsQueue);
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]){
@@ -120,9 +143,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate){
-    SDL_Init(SDL_INIT_VIDEO);
-    SDLVkInstance::GetInstance()->window = SDL_CreateWindow("Dynamic Triangle",  800, 600, SDL_WINDOW_VULKAN);
-    InitVulkan();
     return SDL_APP_CONTINUE;
 }
 
