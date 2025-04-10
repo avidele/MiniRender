@@ -2,6 +2,7 @@
 build/
 markdown/
 .vscode
+libs/
 
 # Prerequisites
 *.d
