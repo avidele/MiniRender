@@ -65,12 +65,12 @@ SDL_AppResult InitSDL3() {
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
+SDL_AppResult SDL_AppInit(void**  /*appstate*/, int  /*argc*/, char*  /*argv*/[]) {
     InitSDL3();
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
+SDL_AppResult SDL_AppIterate(void*  /*appstate*/) {
     if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) {
         SDL_Delay(10);
         return SDL_APP_CONTINUE;
@@ -102,7 +102,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             1.0f);  // Edit 1 float using a slider from 0.0f to 1.0f
         ImGui::ColorEdit4(
             "clear color",
-            (float*)&clear_color);  // Edit 3 floats representing a color
+            reinterpret_cast<float*>(&clear_color));  // Edit 3 floats representing a color
 
         if (ImGui::Button(
                 "Button"))  // Buttons return true when clicked (most widgets
@@ -157,7 +157,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     return SDL_APP_CONTINUE;
 }
 
-SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
+SDL_AppResult SDL_AppEvent(void*  /*appstate*/, SDL_Event* event) {
     ImGui_ImplSDL3_ProcessEvent(event);
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
@@ -169,7 +169,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+void SDL_AppQuit(void*  /*appstate*/, SDL_AppResult  /*result*/) {
     SDL_WaitForGPUIdle(gpu_device);
     ImGui_ImplSDL3_Shutdown();
     ImGui_ImplSDLGPU3_Shutdown();

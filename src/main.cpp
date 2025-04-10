@@ -13,9 +13,9 @@
  struct AppContext {
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_Texture* messageTex, *imageTex;
-    SDL_FRect messageDest;
-    SDL_AudioDeviceID audioDevice;
+    SDL_Texture* message_tex, *image_tex;
+    SDL_FRect message_dest;
+    SDL_AudioDeviceID audio_device;
     SDL_AppResult app_quit = SDL_APP_CONTINUE;
 };
 
