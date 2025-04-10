@@ -1,8 +1,8 @@
 /*
  * @Author: Avidel_Arch 1215935448@qq.com
  * @Date: 2025-03-23 23:58:13
- * @LastEditors: nolanyzhang
- * @LastEditTime: 2025-03-27 22:37:08
+ * @LastEditors: Avidel
+ * @LastEditTime: 2025-04-10 20:29:24
  * @FilePath: /MiniRender/examples/03_triangle/main.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置
  * 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AEN

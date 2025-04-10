@@ -11,7 +11,14 @@ endif()
 find_package(Vulkan REQUIRED)
 
 add_executable(MiniRenderer src/main.cpp)
-target_link_libraries(MiniRenderer SDL3::SDL3 Vulkan::Vulkan)
+add_library(minirenderer_includes INTERFACE)
+target_include_directories(minirenderer_includes INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/SDL/include
+    ${Vulkan_INCLUDE_DIR}
+)
+
+target_link_libraries(MiniRenderer PEIRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes)
 target_compile_definitions(MiniRenderer PUBLIC SDL_MAIN_USE_CALLBACKS)
 
 add_subdirectory(examples)
