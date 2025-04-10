@@ -46,6 +46,7 @@ public:
     };
 
     void initVulkan(std::unique_ptr<SDLContext> sdl_context);
+    void clearVulkan();
 
 private:
     VulkanContextManager() = default;

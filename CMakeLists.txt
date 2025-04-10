@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(libs/SDL EXCLUDE_FROM_ALL)
 if(APPLE)
     # 注意：请根据您的实际Vulkan SDK安装路径修改以下设置
+    message(STATUS "Vulkan SDK path: /Users/avidel/VulkanSDK/1.4.309.0/macOS")
     set(Vulkan_INCLUDE_DIR "/Users/avidel/VulkanSDK/1.4.309.0/macOS/include")
     set(Vulkan_LIBRARY "/Users/avidel/VulkanSDK/1.4.309.0/macOS/lib/libvulkan.dylib")
 endif()

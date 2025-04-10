@@ -16,27 +16,30 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     };
 
     uint32_t extension_count = 0;
-    SDL_Vulkan_GetInstanceExtensions(&extension_count);
-#if EnableDebug
+    // std::vector<const char*> extensions;
+    const auto *extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
     spdlog::info("Vulkan extension count: {}", extension_count);
-    for (uint32_t i = 0; i < extension_count; ++i) {
-        const char* extension_name =
-            SDL_Vulkan_GetInstanceExtensions(&extension_count)[i];
-        spdlog::info("Vulkan extension: {}", extension_name);
-    }
-#endif
 
     VkInstanceCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &app_info,
         .enabledExtensionCount = extension_count,
-        .ppEnabledExtensionNames =
-            SDL_Vulkan_GetInstanceExtensions(&extension_count),
+        .ppEnabledExtensionNames = extensions
     };
 
-    if (vkCreateInstance(&create_info, nullptr, &instance) != VK_SUCCESS) {
-        spdlog::error("Failed to create Vulkan instance!");
-        exit(EXIT_FAILURE);
+    VkResult result = vkCreateInstance(&create_info, nullptr, &instance);
+    switch (result) {
+        case VK_ERROR_INCOMPATIBLE_DRIVER:
+            spdlog::error("Incompatible driver - your GPU driver doesn't support this Vulkan version");
+            break;
+        case VK_ERROR_EXTENSION_NOT_PRESENT:
+            spdlog::error("Extension not present - a requested extension is not supported");
+            break;
+        case VK_ERROR_LAYER_NOT_PRESENT:
+            spdlog::error("Layer not present - a requested layer is not supported");
+            break;
+        default:
+            spdlog::error("Unknown error");
     }
 
     if (!SDL_Vulkan_CreateSurface(window.get(), instance, nullptr, &surface)) {
@@ -71,4 +74,9 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_create_info,
     };
+}
+
+void VulkanContextManager::clearVulkan(){
+    vkDestroyInstance(instance, nullptr);
+    spdlog::info("Vulkan resources cleared.");
 }
