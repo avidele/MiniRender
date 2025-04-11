@@ -8,24 +8,23 @@
 #define SDL_MAIN_USE_CALLBACKS
 #include "SDL3/SDL_init.h"
 #include "Utils/vulkan_util.hpp"
+#include "spdlog/spdlog.h"
 #include <SDL3/SDL_main.h>
 #include <vulkan/vulkan_core.h>
-#include "spdlog/spdlog.h"
 
 constexpr Uint32 window_height = 600;
 constexpr Uint32 window_width = 800;
 
 SDL_AppResult SDL_AppInit(void** /*appstate*/, int /*argc*/, char* /*argv*/[]) {
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%# %!] [%l] %v");
-    VulkanContextManager* sdl_vk_instance =
-        VulkanContextManager::getInstance();
+    VulkanContextManager* sdl_vk_instance = VulkanContextManager::getInstance();
 
     std::unique_ptr<SDLContext> sdl_context = std::make_unique<SDLContext>();
     SDL_Init(SDL_INIT_VIDEO);
     auto* window = SDL_CreateWindow("Dynamic Triangle", window_width,
-                                           window_height, SDL_WINDOW_VULKAN);
-                                           sdl_context->setWindow(window);
-                                           sdl_vk_instance->initVulkan(std::move(sdl_context));
+                                    window_height, SDL_WINDOW_VULKAN);
+    sdl_context->setWindow(window);
+    sdl_vk_instance->initVulkan(std::move(sdl_context));
     return SDL_APP_CONTINUE;
 }
 

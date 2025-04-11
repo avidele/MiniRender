@@ -1,9 +1,17 @@
+/*
+ * @author: Avidel
+ * @LastEditors: Avidel
+ */
 #pragma once
 #include "SDL3/SDL_video.h"
 #include <memory>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 #define EnableDebug 1
+#if defined(__APPLE__)
+    #define VKB_ENABLE_PORTABILITY 1
+    #define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
+#endif
 struct Vertex {
     float pos[2];
     float color[3];
@@ -22,6 +30,10 @@ class SDLContext {
 
 public:
     SDLContext() : window(nullptr) {}
+
+    SDL_Window* getWindowPtr() const {
+        return window.get();
+    }
 
     std::unique_ptr<SDL_Window, SDLWindowDeleter> getWindow() {
         return std::move(window);
@@ -46,6 +58,8 @@ public:
     };
 
     void initVulkan(std::unique_ptr<SDLContext> sdl_context);
+    void initDevice();
+    void createSurface(std::unique_ptr<SDLContext> sdl_context);
     void clearVulkan();
 
 private:
