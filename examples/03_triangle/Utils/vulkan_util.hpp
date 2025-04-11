@@ -9,8 +9,8 @@
 #include <vulkan/vulkan_core.h>
 #define EnableDebug 1
 #if defined(__APPLE__)
-    #define VKB_ENABLE_PORTABILITY 1
-    #define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
+#define VKB_ENABLE_PORTABILITY 1
+#define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
 #endif
 struct Vertex {
     float pos[2];
@@ -31,17 +31,13 @@ class SDLContext {
 public:
     SDLContext() : window(nullptr) {}
 
-    SDL_Window* getWindowPtr() const {
-        return window.get();
-    }
+    SDL_Window* getWindowPtr() const { return window.get(); }
 
     std::unique_ptr<SDL_Window, SDLWindowDeleter> getWindow() {
         return std::move(window);
     }
 
-    void setWindow(SDL_Window* win) {
-        window.reset(win);
-    }
+    void setWindow(SDL_Window* win) { window.reset(win); }
 };
 
 class VulkanContextManager {
@@ -60,11 +56,25 @@ public:
     void initVulkan(std::unique_ptr<SDLContext> sdl_context);
     void initDevice();
     void createSurface(std::unique_ptr<SDLContext> sdl_context);
+    void initSwapChain();
     void clearVulkan();
+
+#if EnableDebug
+    static VKAPI_ATTR VkBool32 VKAPI_CALL
+    debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                  VkDebugUtilsMessageTypeFlagsEXT messageType,
+                  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                  void* pUserData);
+
+    void setupDebugMessenger();
+#endif
 
 private:
     VulkanContextManager() = default;
     ~VulkanContextManager() = default;
+#if EnableDebug
+    VkDebugUtilsMessengerEXT debug_messenger{VK_NULL_HANDLE};
+#endif
 
     VkInstance instance;
     VkSurfaceKHR surface;
@@ -77,4 +87,3 @@ private:
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
 };
-
