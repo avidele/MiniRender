@@ -5,6 +5,7 @@
 
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_stdinc.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #define SDL_MAIN_USE_CALLBACKS
 #include "SDL3/SDL_init.h"
 #include "Utils/vulkan_util.hpp"
@@ -16,7 +17,11 @@ constexpr Uint32 window_height = 600;
 constexpr Uint32 window_width = 800;
 
 SDL_AppResult SDL_AppInit(void** /*appstate*/, int /*argc*/, char* /*argv*/[]) {
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%# %!] [%l] %v");
+    auto console = spdlog::stdout_color_mt("console");
+    spdlog::set_default_logger(console);
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%s:%# %!%$] [%^%l%$] %v");
+    spdlog::set_level(spdlog::level::debug);
+    
     VulkanContextManager* sdl_vk_instance = VulkanContextManager::getInstance();
 
     std::unique_ptr<SDLContext> sdl_context = std::make_unique<SDLContext>();
