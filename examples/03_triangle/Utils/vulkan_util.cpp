@@ -19,7 +19,6 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     };
     // 1. 获取SDL需要的扩展
     uint32_t extension_count = 0;
-    // 创建扩展列表
 
     const auto* m_extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
     std::vector<const char*> extensions(extension_count);
@@ -27,17 +26,14 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
         extensions[i] = m_extensions[i];
     }
 #if EnableDebug
-    // 添加调试扩展
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
 
-    // 3. 获取验证层
+    // 2. 获取验证层
     std::vector<const char*> validation_layers;
 #if EnableDebug
-    // 添加验证层（仅调试模式）
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
     
-    // 检查验证层是否可用
     uint32_t layer_count = 0;
     vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
     std::vector<VkLayerProperties> available_layers(layer_count);
@@ -57,7 +53,6 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     }
 #endif
 
-    // 4. 打印信息（调试模式）
 #if EnableDebug
     spdlog::info("Vulkan extension count: {}", extensions.size());
     spdlog::info("Vulkan extensions: ");
@@ -73,7 +68,6 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     }
 #endif
 
-    // 5. 创建实例
     VkInstanceCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &app_info,
@@ -175,7 +169,6 @@ void VulkanContextManager::setupDebugMessenger() {
         instance, "vkCreateDebugUtilsMessengerEXT"));
     
     if (func) {
-        // 创建调试信使
         if (func(instance, &create_info, nullptr, &debug_messenger) != VK_SUCCESS) {
             spdlog::error("Failed to set up debug messenger!");
         } else {
