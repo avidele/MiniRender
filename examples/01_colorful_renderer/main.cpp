@@ -67,7 +67,13 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void*  /*appstate*/, SDL_AppResult  /*result*/) {
+void SDL_AppQuit(void* appstate, SDL_AppResult  /*result*/) {
+    auto* app = static_cast<AppContext*>(appstate);
+    if (app) {
+        if (app->renderer) SDL_DestroyRenderer(app->renderer);
+        if (app->window) SDL_DestroyWindow(app->window);
+        delete app;
+    }
     SDL_Quit();
 }
 
