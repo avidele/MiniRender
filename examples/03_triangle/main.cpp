@@ -3,49 +3,41 @@
  * @LastEditors: Avidel
  */
 
-#include "SDL3/SDL_events.h"
-#include "SDL3/SDL_stdinc.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#define SDL_MAIN_USE_CALLBACKS
-#include "SDL3/SDL_init.h"
-#include "Utils/vulkan_util.hpp"
-#include "spdlog/spdlog.h"
-#include <SDL3/SDL_main.h>
-#include <vulkan/vulkan_core.h>
-
-constexpr Uint32 window_height = 600;
-constexpr Uint32 window_width = 800;
-
-SDL_AppResult SDL_AppInit(void** /*appstate*/, int /*argc*/, char* /*argv*/[]) {
-    auto console = spdlog::stdout_color_mt("console");
-    spdlog::set_default_logger(console);
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%s:%# %!%$] [%^%l%$] %v");
-    spdlog::set_level(spdlog::level::debug);
-    
-    VulkanContextManager* sdl_vk_instance = VulkanContextManager::getInstance();
-
-    std::unique_ptr<SDLContext> sdl_context = std::make_unique<SDLContext>();
-    SDL_Init(SDL_INIT_VIDEO);
-    auto* window = SDL_CreateWindow("Dynamic Triangle", window_width,
-                                    window_height, SDL_WINDOW_VULKAN);
-    sdl_context->setWindow(window);
-    sdl_vk_instance->initVulkan(std::move(sdl_context));
-    return SDL_APP_CONTINUE;
-}
-
-void SDL_AppQuit(void* /*appstate*/, SDL_AppResult /*result*/) {
-    auto* sdl_vk_instance = VulkanContextManager::getInstance();
-    SDL_Quit();
-}
-
-SDL_AppResult SDL_AppEvent(void* /*appstate*/, SDL_Event* event) {
-    if (event->type == SDL_EVENT_QUIT) {
-        return SDL_APP_SUCCESS;
-    } else if (event->type == SDL_EVENT_MOUSE_MOTION) {
-    }
-    return SDL_APP_CONTINUE;
-}
-
-SDL_AppResult SDL_AppIterate(void* /*appstate*/) {
-    return SDL_APP_CONTINUE;
-}
+ #include "Utils/vulkan_util.hpp" // 包含新的应用程序和 Vulkan 工具类
+ #include "spdlog/sinks/stdout_color_sinks.h"
+ #include "spdlog/spdlog.h"
+ #include <cstdlib>   // 为了 EXIT_SUCCESS 和 EXIT_FAILURE
+ #include <exception> // 为了 std::exception
+ 
+ int main(int /*argc*/, char* /*argv*/[]) {
+     // 尽早设置日志记录器
+     try {
+         auto console = spdlog::stdout_color_mt("console");
+         spdlog::set_default_logger(console);
+         // 设置日志格式，包含文件名、行号和函数名
+         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%s:%# %!%$] [%^%l%$] %v");
+         spdlog::set_level(spdlog::level::debug); // 设置日志级别为 debug
+         spdlog::info("Logging initialized.");
+     } catch (const spdlog::spdlog_ex& ex) {
+         // 如果 spdlog 初始化失败，则使用标准输出
+         printf("Log initialization failed: %s\n", ex.what());
+         // 在这种早期阶段失败可能表明存在严重问题
+     }
+ 
+     // 创建并运行应用程序实例
+     TriangleApplication app;
+     try {
+         app.run(); // 调用 run() 方法来启动初始化、主循环和清理
+     } catch (const std::exception& e) {
+         // 捕获并记录标准异常
+         spdlog::critical("Application encountered an error: {}", e.what());
+         return EXIT_FAILURE;
+     } catch (...) {
+         // 捕获所有其他类型的未知异常
+         spdlog::critical("Application encountered an unknown error.");
+         return EXIT_FAILURE;
+     }
+ 
+     spdlog::info("Application finished successfully.");
+     return EXIT_SUCCESS; // 指示应用程序成功完成
+ }
