@@ -5,6 +5,7 @@
 #pragma once
 #include "SDL3/SDL_video.h"
 #include <memory>
+#include <vector>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 #define EnableDebug 1
@@ -57,6 +58,7 @@ public:
     void initDevice();
     void createSurface(std::unique_ptr<SDLContext> sdl_context);
     void initSwapChain();
+    void recreateSwapChain();
     void clearVulkan();
 
 #if EnableDebug
@@ -86,4 +88,6 @@ private:
     VkPipelineLayout pipeline_layout;
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    std::vector<VkImage> swapchain_images;
+    std::vector<VkImageView> swapchain_image_views;
 };

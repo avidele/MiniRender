@@ -20,7 +20,8 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     // 1. 获取SDL需要的扩展
     uint32_t extension_count = 0;
 
-    const auto* m_extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
+    const auto* m_extensions =
+        SDL_Vulkan_GetInstanceExtensions(&extension_count);
     std::vector<const char*> extensions(extension_count);
     for (uint32_t i = 0; i < extension_count; ++i) {
         extensions[i] = m_extensions[i];
@@ -33,12 +34,12 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     std::vector<const char*> validation_layers;
 #if EnableDebug
     validation_layers.push_back("VK_LAYER_KHRONOS_validation");
-    
+
     uint32_t layer_count = 0;
     vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
     std::vector<VkLayerProperties> available_layers(layer_count);
     vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
-    
+
     bool layer_found = false;
     for (const auto& layer : available_layers) {
         if (strcmp("VK_LAYER_KHRONOS_validation", layer.layerName) == 0) {
@@ -46,7 +47,7 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
             break;
         }
     }
-    
+
     if (!layer_found) {
         spdlog::warn("Validation layer VK_LAYER_KHRONOS_validation not found!");
         validation_layers.clear();  // 如果找不到，不使用验证层
@@ -59,7 +60,7 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
     for (const auto& extension : extensions) {
         spdlog::info("  {}", extension);
     }
-    
+
     if (!validation_layers.empty()) {
         spdlog::info("Validation layers enabled:");
         for (const auto& layer : validation_layers) {
@@ -116,27 +117,28 @@ void VulkanContextManager::initVulkan(std::unique_ptr<SDLContext> sdl_context) {
 #endif
     createSurface(std::move(sdl_context));
     initDevice();
+    initSwapChain();
 }
 
 #if EnableDebug
 // 实现调试回调函数
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContextManager::debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT  /*messageType*/,
+    VkDebugUtilsMessageTypeFlagsEXT /*messageType*/,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void*  /*pUserData*/) {
-    
+    void* /*pUserData*/) {
     // 根据消息严重性级别使用不同的日志级别
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
         spdlog::error("Validation Error: {}", pCallbackData->pMessage);
-    } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    } else if (messageSeverity &
+               VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
         spdlog::warn("Validation Warning: {}", pCallbackData->pMessage);
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
         spdlog::info("Validation Info: {}", pCallbackData->pMessage);
     } else {
         spdlog::debug("Validation Debug: {}", pCallbackData->pMessage);
     }
-    
+
     // 返回VK_FALSE表示不中断API调用
     return VK_FALSE;
 }
@@ -146,36 +148,38 @@ void VulkanContextManager::setupDebugMessenger() {
     // 创建调试信使的信息结构体
     VkDebugUtilsMessengerCreateInfoEXT create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    
+
     // 设置要接收的消息严重性级别
-    create_info.messageSeverity = 
+    create_info.messageSeverity =
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |  // 详细信息
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |     // 一般信息
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |  // 警告
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;     // 错误
-    
+
     // 设置要接收的消息类型
-    create_info.messageType = 
-        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |      // 一般消息
-        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |   // 验证消息
-        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;   // 性能消息
-    
+    create_info.messageType =
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |     // 一般消息
+        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |  // 验证消息
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;  // 性能消息
+
     // 设置回调函数和用户数据
     create_info.pfnUserCallback = debugCallback;
     create_info.pUserData = nullptr;
-    
+
     // 获取函数指针(vkCreateDebugUtilsMessengerEXT不是核心功能，需要手动获取)
-    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(
-        instance, "vkCreateDebugUtilsMessengerEXT"));
-    
+    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+
     if (func) {
-        if (func(instance, &create_info, nullptr, &debug_messenger) != VK_SUCCESS) {
+        if (func(instance, &create_info, nullptr, &debug_messenger) !=
+            VK_SUCCESS) {
             spdlog::error("Failed to set up debug messenger!");
         } else {
             spdlog::info("Debug messenger setup successfully");
         }
     } else {
-        spdlog::error("Failed to find vkCreateDebugUtilsMessengerEXT function!");
+        spdlog::error(
+            "Failed to find vkCreateDebugUtilsMessengerEXT function!");
     }
 }
 #endif
@@ -271,6 +275,22 @@ void VulkanContextManager::createSurface(
 }
 
 void VulkanContextManager::initSwapChain() {
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+            physical_device, surface, &surface_capabilities) != VK_SUCCESS) {
+        spdlog::error("Failed to get Vulkan surface capabilities!");
+    }
+#if EnableDebug
+    spdlog::info("Vulkan surface capabilities:");
+    spdlog::info("  minImageCount: {}", surface_capabilities.minImageCount);
+    spdlog::info("  maxImageCount: {}", surface_capabilities.maxImageCount);
+    spdlog::info("  currentExtent: {}x{}",
+                 surface_capabilities.currentExtent.width,
+                 surface_capabilities.currentExtent.height);
+    spdlog::info("  minImageExtent: {}x{}",
+                 surface_capabilities.minImageExtent.width,
+                 surface_capabilities.minImageExtent.height);
+#endif
     VkSwapchainCreateInfoKHR swap_chain_create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = surface,
@@ -286,18 +306,95 @@ void VulkanContextManager::initSwapChain() {
         .clipped = VK_TRUE,
     };
 
+    if(surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) {
+        swap_chain_create_info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+    if(surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+        swap_chain_create_info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
+
     if (vkCreateSwapchainKHR(device, &swap_chain_create_info, nullptr,
                              &swap_chain) != VK_SUCCESS) {
         spdlog::error("Failed to create Vulkan swap chain!");
     }
+
+    uint32_t swapchain_image_count;
+    if(vkGetSwapchainImagesKHR(device, swap_chain, &swapchain_image_count,
+                             nullptr) != VK_SUCCESS) {
+        spdlog::error("Failed to get Vulkan swap chain image count!");
+    }
+    std::vector<VkImage> swapchain_images(swapchain_image_count);
+    if(vkGetSwapchainImagesKHR(device, swap_chain, &swapchain_image_count,
+                             swapchain_images.data()) != VK_SUCCESS) {
+        spdlog::error("Failed to get Vulkan swap chain images!");
+    }
+#if EnableDebug
+    spdlog::info("Vulkan swap chain created successfully.");
+    spdlog::info("Vulkan swap chain image count: {}", swapchain_image_count);
+    for (const auto& image : swapchain_images) {
+        spdlog::info("Vulkan swap chain image: {}", fmt::ptr(image));
+    }
+#endif
+    
+    // create image views
+    swapchain_image_views.resize(swapchain_image_count);
+    VkImageViewCreateInfo image_view_create_info{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = swap_chain_create_info.imageFormat,
+        .components = {
+            .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = VK_COMPONENT_SWIZZLE_IDENTITY,
+        },
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+    for(size_t i; i < swapchain_image_count; ++i) {
+        image_view_create_info.image = swapchain_images[i];
+        if(vkCreateImageView(device, &image_view_create_info, nullptr,
+                             &swapchain_image_views[i]) != VK_SUCCESS) {
+            spdlog::error("Failed to create Vulkan image view!");
+        }
+    }
+
+}
+
+void VulkanContextManager::recreateSwapChain() {
+    vkDeviceWaitIdle(device);
+    vkDestroySwapchainKHR(device, swap_chain, nullptr);
+    for (auto* image_view : swapchain_image_views) {
+        vkDestroyImageView(device, image_view, nullptr);
+    }
+    swapchain_image_views.clear();
+    initSwapChain();
 }
 
 void VulkanContextManager::clearVulkan() {
-    #if EnableDebug
+#if EnableDebug
+    spdlog::info("Clearing Vulkan resources...");
+    // 销毁交换链
+    if (swap_chain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device, swap_chain, nullptr);
+        swap_chain = VK_NULL_HANDLE;
+    }
+    // 销毁交换链图像视图
+    for (auto* image_view : swapchain_image_views) {
+        if (image_view != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, image_view, nullptr);
+        }
+    }
+    swapchain_image_views.clear();
     // 销毁调试信使
     if (debug_messenger != VK_NULL_HANDLE) {
-        auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(
-            instance, "vkDestroyDebugUtilsMessengerEXT"));
+        auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
         if (func) {
             func(instance, debug_messenger, nullptr);
         }
@@ -308,14 +405,14 @@ void VulkanContextManager::clearVulkan() {
     if (device != VK_NULL_HANDLE) {
         vkDestroyDevice(device, nullptr);
     }
-    
+
     if (surface != VK_NULL_HANDLE) {
         vkDestroySurfaceKHR(instance, surface, nullptr);
     }
-    
+
     if (instance != VK_NULL_HANDLE) {
         vkDestroyInstance(instance, nullptr);
     }
-    
+
     spdlog::info("Vulkan resources cleared.");
 }
