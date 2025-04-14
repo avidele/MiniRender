@@ -1,8 +1,12 @@
 #!/bin/bash
+###
+ # @author: Avidel
+ # @LastEditors: Avidel
+### 
 # 编译着色器的脚本
 
 # 确保Vulkan SDK环境变量已设置
-GLSLC="/Users/avidel/VulkanSDK/1.4.309.0/macOS/bin/glslc"
+# GLSLC="/Users/avidel/VulkanSDK/1.4.309.0/macOS/bin/glslc"
 
 if [ ! -f "$GLSLC" ]; then
   echo "无法找到glslc编译器：$GLSLC"
