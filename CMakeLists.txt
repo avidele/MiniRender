@@ -19,7 +19,7 @@ target_include_directories(minirenderer_includes INTERFACE
     ${Vulkan_INCLUDE_DIR}
 )
 
-target_link_libraries(MiniRenderer PEIRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes)
+target_link_libraries(MiniRenderer PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes)
 target_compile_definitions(MiniRenderer PUBLIC SDL_MAIN_USE_CALLBACKS)
 
 add_subdirectory(libs/spdlog)
