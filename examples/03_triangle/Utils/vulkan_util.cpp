@@ -167,9 +167,9 @@ void VulkanContextManager::createInstance() {
     debug_create_info.messageSeverity =
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-        // Add VERBOSE and INFO if desired:
-        // | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-        // | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+    // Add VERBOSE and INFO if desired:
+    // | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+    // | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
     debug_create_info.messageType =
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
