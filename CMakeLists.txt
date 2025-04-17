@@ -17,12 +17,25 @@ target_include_directories(minirenderer_includes INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/SDL/include
     ${Vulkan_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/stb
 )
 
-target_link_libraries(MiniRenderer PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes)
+target_link_libraries(MiniRenderer PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes stb)
 target_compile_definitions(MiniRenderer PUBLIC SDL_MAIN_USE_CALLBACKS)
 
 add_subdirectory(libs/spdlog)
 add_subdirectory(examples)
 add_subdirectory(libs/imgui)
 add_subdirectory(libs/glm)
+add_subdirectory(libs/stb)
+
+# 包含目录
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/glm
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/SDL/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/spdlog/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/stb
+)
