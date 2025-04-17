@@ -1101,6 +1101,8 @@ void Renderer::createDescriptorSetLayout() {
 
 std::vector<char> Renderer::readFile(const std::string& filename) {
     // Open file at the end to easily get the size
+    std::filesystem::path absolute_path = std::filesystem::absolute(filename);
+    spdlog::debug("Attempting to read file from absolute path: {}", absolute_path.string()); 
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
@@ -1134,8 +1136,7 @@ VkShaderModule Renderer::createShaderModule(const std::vector<char>& code) {
 
 void Renderer::createGraphicsPipeline() {
     // 使用相对路径或确保工作目录正确
-    std::string shader_dir = "/Users/avidel/Documents/Prog/MiniRender/examples/"
-                             "04_triangle_spin/shaders/";  // 更改路径
+    std::string shader_dir = "./shaders/"; // 使用相对路径
     auto vert_shader_code = readFile(shader_dir + "vert.spv");
     auto frag_shader_code = readFile(shader_dir + "frag.spv");
 
