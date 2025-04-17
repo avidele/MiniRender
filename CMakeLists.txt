@@ -27,7 +27,7 @@ add_subdirectory(libs/spdlog)
 add_subdirectory(examples)
 add_subdirectory(libs/imgui)
 add_subdirectory(libs/glm)
-add_subdirectory(libs/stb)
+# add_subdirectory(libs/stb)
 
 # 包含目录
 include_directories(

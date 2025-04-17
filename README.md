@@ -23,3 +23,6 @@ MiniRender will start when my examples finish.
 
 ## 03_triangle
 ![alt text](md/triangle.png)
+
+## 04_triangle_spin
+![alt text](md/triangle_spin.png)
