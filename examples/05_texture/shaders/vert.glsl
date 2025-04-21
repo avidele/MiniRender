@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec3 inColor;
+layout(location = 2) in vec2 inTexCoord; // Input texture coordinates
 
 layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
@@ -11,11 +12,13 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 layout(location = 0) out vec3 fragColor;
+layout(location = 1) out vec2 fragTexCoord; // Output texture coordinates
 
 void main() {
     // 使用 UBO 中的 MVP 矩阵计算最终位置
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
     fragColor = inColor;
+    fragTexCoord = inTexCoord; // Pass texture coordinates to fragment shader
     // 可选：如果你想让点更大，可以设置 gl_PointSize
     // gl_PointSize = 5.0; // 例如，5 像素大小
 }

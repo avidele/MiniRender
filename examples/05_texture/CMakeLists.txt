@@ -22,3 +22,6 @@ add_custom_command(
     COMMENT "Copying shaders to build directory"
     VERBATIM 
 )
+
+# Copy texture image to the build directory
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Image/texture.png DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Image)

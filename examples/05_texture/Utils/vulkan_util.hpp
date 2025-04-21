@@ -35,7 +35,8 @@ struct UniformBufferObject {
 // --- Vertex Data Structure ---
 struct Vertex {
     glm::vec2 pos;
-    glm::vec3 color;
+    glm::vec3 color; // Keep color for now, might remove later if not used
+    glm::vec2 texCoord; // Add texture coordinates
 
     // Describes how to bind vertex data
     static VkVertexInputBindingDescription getBindingDescription() {
@@ -49,11 +50,11 @@ struct Vertex {
         return binding_description;
     }
 
-    // Describes the attributes within a vertex (position, color)
+    // Describes the attributes within a vertex (position, color, texCoord)
     static std::vector<VkVertexInputAttributeDescription>
     getAttributeDescriptions() {
         std::vector<VkVertexInputAttributeDescription> attribute_descriptions(
-            2);
+            3); // Now 3 attributes
 
         // Position attribute
         attribute_descriptions[0].binding =
@@ -70,6 +71,13 @@ struct Vertex {
             1;  // layout(location = 1) in vertex shader
         attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;  // vec3
         attribute_descriptions[1].offset = offsetof(Vertex, color);
+
+        // Texture Coordinate attribute
+        attribute_descriptions[2].binding = 0;
+        attribute_descriptions[2].location =
+            2; // layout(location = 2) in vertex shader
+        attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT; // vec2
+        attribute_descriptions[2].offset = offsetof(Vertex, texCoord);
 
         return attribute_descriptions;
     }
@@ -185,6 +193,19 @@ public:
     VkCommandBuffer beginSingleTimeCommands(VkCommandPool pool);
     void endSingleTimeCommands(VkCommandPool pool,
                                VkCommandBuffer commandBuffer);
+    // NEW: Helper to create image views
+    VkImageView createImageView(VkImage image, VkFormat format);
+    // NEW: Helper to create images
+    void createImage(uint32_t width, uint32_t height, VkFormat format,
+                     VkImageTiling tiling, VkImageUsageFlags usage,
+                     VkMemoryPropertyFlags properties, VkImage& image,
+                     VkDeviceMemory& imageMemory);
+    // NEW: Helper to transition image layout
+    void transitionImageLayout(VkCommandPool pool, VkImage image, VkFormat format,
+                               VkImageLayout oldLayout, VkImageLayout newLayout);
+    // NEW: Helper to copy buffer to image
+    void copyBufferToImage(VkCommandPool pool, VkBuffer buffer, VkImage image,
+                           uint32_t width, uint32_t height);
 
 #if EnableDebug
     // Debug callback setup
@@ -293,6 +314,11 @@ private:
     void createFramebuffers();
     void createCommandPool();
     void createVertexBuffer();
+    // NEW: Add declarations for texture and index buffer creation
+    void createTextureImage();
+    void createTextureImageView();
+    void createTextureSampler();
+    void createIndexBuffer();
     void createUniformBuffers();      // 新增：创建Uniform Buffers
     void createDescriptorPool();      // 新增：创建描述符池
     void createDescriptorSets();      // 新增：创建描述符集
@@ -333,8 +359,14 @@ private:
     // --- UBO Resources ---
     std::vector<VkBuffer> uniform_buffers;          // 新增
     std::vector<VkDeviceMemory> uniform_buffers_memory; // 新增
-    VkDescriptorPool descriptor_pool{VK_NULL_HANDLE}; // 新增
-    std::vector<VkDescriptorSet> descriptor_sets;     // 新增
+    VkDescriptorPool descriptor_pool{VK_NULL_HANDLE};   // 新增
+    std::vector<VkDescriptorSet> descriptor_sets;       // 新增
+
+    // --- Texture Resources --- NEW
+    VkImage texture_image{VK_NULL_HANDLE};
+    VkDeviceMemory texture_image_memory{VK_NULL_HANDLE};
+    VkImageView texture_image_view{VK_NULL_HANDLE};
+    VkSampler texture_sampler{VK_NULL_HANDLE};
 
     // --- Synchronization ---
     // We use multiple frames in flight to allow CPU to work while GPU renders
@@ -351,20 +383,24 @@ private:
     bool framebuffer_resized =
         false;  // Flag set by Application on resize events
 
-    // --- Triangle and Point Vertex Data ---
+    // --- Triangle and Point Vertex Data --- NEW: Square vertices
     const std::vector<Vertex> vertices = {
-        // Triangle
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Red vertex at top
-        { {0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, // Green vertex at bottom right
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}, // Blue vertex at bottom left
-        // Points (Lights)
-        // {{0.8f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // White point 1
-        // {{-0.8f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // White point 2
-        // {{0.0f, 0.8f}, {1.0f, 1.0f, 1.0f}}, // White point 3
-        // {{0.0f, -0.8f}, {1.0f, 1.0f, 1.0f}}  // White point 4
+        // Position             Color                TexCoord (V coordinate flipped)
+        {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}, // Bottom-left vertex, UV (0,1) -> Bottom-left of texture
+        {{0.5f, -0.5f},  {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}, // Bottom-right vertex, UV (1,1) -> Bottom-right of texture
+        {{0.5f, 0.5f},   {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}}, // Top-right vertex, UV (1,0) -> Top-right of texture
+        {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}}  // Top-left vertex, UV (0,0) -> Top-left of texture
     };
-    const uint32_t num_triangle_vertices = 3;
-    const uint32_t num_point_vertices = 4;
+
+    // NEW: Indices for the square
+    const std::vector<uint16_t> indices = {
+        0, 1, 2, 2, 3, 0
+    };
+
+    // NEW: Index buffer resources
+    VkBuffer index_buffer{VK_NULL_HANDLE};
+    VkDeviceMemory index_buffer_memory{VK_NULL_HANDLE};
+
 };
 
 // --- Main Application Class ---
