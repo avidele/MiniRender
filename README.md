@@ -26,3 +26,6 @@ MiniRender will start when my examples finish.
 
 ## 04_triangle_spin
 ![alt text](md/triangle_spin.png)
+
+## 05_texture
+![alt text](md/05_texture.png)
