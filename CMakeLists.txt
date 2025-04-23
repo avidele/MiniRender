@@ -28,7 +28,6 @@ add_subdirectory(examples)
 add_subdirectory(libs/imgui)
 add_subdirectory(libs/glm)
 # add_subdirectory(libs/stb)
-add_subdirectory(libs/tinyobjloader)
 
 # 包含目录
 include_directories(
@@ -39,5 +38,4 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/spdlog/include
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/imgui
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/stb
-    ${CMAKE_CURRENT_SOURCE_DIR}/libs/tinyobjloader
 )

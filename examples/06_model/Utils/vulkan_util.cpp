@@ -23,6 +23,8 @@
 #include <stdexcept>  // For runtime_error
 #define STB_IMAGE_IMPLEMENTATION // Define this in exactly one .c or .cpp file
 #include <stb_image.h>           // For image loading
+#include "tiny_obj_loader.h"     // For model loading
+#include <unordered_map>         // For vertex deduplication
 
 // --- SDLContext Implementation ---
 bool SDLContext::init() {
@@ -834,12 +836,16 @@ void VulkanContextManager::copyBuffer(VkCommandPool pool, VkBuffer srcBuffer,
 }
 
 VkImageView VulkanContextManager::createImageView(VkImage image, VkFormat format) {
+    return createImageView(image, format, VK_IMAGE_ASPECT_COLOR_BIT);
+}
+
+VkImageView VulkanContextManager::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
     VkImageViewCreateInfo view_info{};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format = format;
-    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.aspectMask = aspectFlags;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.baseArrayLayer = 0;
@@ -963,9 +969,31 @@ void VulkanContextManager::copyBufferToImage(VkCommandPool pool, VkBuffer buffer
     endSingleTimeCommands(pool, command_buffer);
 }
 
+VkFormat VulkanContextManager::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &props);
+
+        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+            return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+    throw std::runtime_error("failed to find supported format!");
+}
+
+VkFormat VulkanContextManager::findDepthFormat() {
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+}
+
 // --- Renderer Implementation ---
 
-Renderer::Renderer(VulkanContextManager* context) : vulkan_context(context) {
+Renderer::Renderer(VulkanContextManager* context) : vulkan_context(context), depth_image(VK_NULL_HANDLE), depth_image_memory(VK_NULL_HANDLE), depth_image_view(VK_NULL_HANDLE) {
     if (!vulkan_context) {
         throw std::invalid_argument(
             "VulkanContextManager pointer cannot be null for Renderer");
@@ -989,14 +1017,16 @@ Renderer::~Renderer() {
 void Renderer::init() {
     spdlog::info("Initializing Renderer...");
     createCommandPool();          // Pool needed early for buffer/image copies
+    LoadModel();                  // Load model data first
     createTextureImage();         // Load and upload texture
     createTextureImageView();     // Create view for the texture
     createTextureSampler();       // Create sampler for the texture
-    createVertexBuffer();         // Create vertex buffer
-    createIndexBuffer();          // Create index buffer
+    createVertexBuffer();         // Create vertex buffer (uses loaded model data)
+    createIndexBuffer();          // Create index buffer (uses loaded model data)
     createDescriptorSetLayout();  // Must be before pipeline layout
     createRenderPass();
     createGraphicsPipeline();     // Depends on layout and render pass
+    createDepthResources();       // Create depth resources before framebuffers
     createFramebuffers();         // Depends on swapchain image views and render pass
     createUniformBuffers();       // Create UBOs
     createDescriptorPool();       // Create pool for descriptor sets
@@ -1006,12 +1036,30 @@ void Renderer::init() {
     spdlog::info("Renderer initialized successfully.");
 }
 
+void Renderer::cleanupDepthResources() {
+    if (depth_image_view != VK_NULL_HANDLE) {
+        vkDestroyImageView(vulkan_context->getDevice(), depth_image_view, nullptr);
+        depth_image_view = VK_NULL_HANDLE;
+    }
+    if (depth_image != VK_NULL_HANDLE) {
+        vkDestroyImage(vulkan_context->getDevice(), depth_image, nullptr);
+        depth_image = VK_NULL_HANDLE;
+    }
+    if (depth_image_memory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkan_context->getDevice(), depth_image_memory, nullptr);
+        depth_image_memory = VK_NULL_HANDLE;
+    }
+     spdlog::debug("Depth resources destroyed.");
+}
+
 void Renderer::cleanup() {
     spdlog::info("Cleaning up Renderer...");
     // Wait for device idle before destroying resources
     // vkDeviceWaitIdle called in destructor or before explicit call
 
     cleanupSwapChainDependents();  // Clean things that depend on the swapchain first
+
+    cleanupDepthResources(); // Clean up depth resources first
 
     // Destroy Texture Sampler
     if (texture_sampler != VK_NULL_HANDLE) {
@@ -1129,6 +1177,8 @@ void Renderer::cleanupSwapChainDependents() {
     swapchain_framebuffers.clear();
     spdlog::debug("Framebuffers destroyed.");
 
+    cleanupDepthResources(); // Depth resources depend on swapchain size
+
     // Descriptor Pool (needs recreation because count depends on swapchain images for UBOs)
     if (descriptor_pool != VK_NULL_HANDLE) {
         // Don't vkResetDescriptorPool, just destroy it. Sets are implicitly freed.
@@ -1180,11 +1230,40 @@ void Renderer::handleSwapChainRecreation() {
     // DescriptorSetLayout usually doesn't depend on swapchain, but pipeline does
     // createDescriptorSetLayout(); // Recreate layout only if it changes
     createGraphicsPipeline();     // Depends on layout and render pass
+    createDepthResources();       // Recreate depth resources based on new size
     createFramebuffers();         // Depends on new image views and render pass
     createUniformBuffers();       // Recreate UBOs for the new number of images
     createDescriptorPool();       // Recreate pool for new number of sets
     createDescriptorSets();       // Recreate descriptor sets (bind UBOs and Texture)
     createCommandBuffers();       // Depends on framebuffers, pipeline, etc.
+}
+
+VkFormat Renderer::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    return vulkan_context->findSupportedFormat(candidates, tiling, features);
+}
+
+VkFormat Renderer::findDepthFormat() {
+    return vulkan_context->findDepthFormat();
+}
+
+void Renderer::createDepthResources() {
+    VkFormat depth_format = findDepthFormat();
+    VkExtent2D swapchain_extent = vulkan_context->getSwapChainExtent();
+
+    vulkan_context->createImage(swapchain_extent.width, swapchain_extent.height,
+                                depth_format, VK_IMAGE_TILING_OPTIMAL,
+                                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                depth_image, depth_image_memory);
+
+    depth_image_view = vulkan_context->createImageView(depth_image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT); // Specify aspect mask
+
+    // Optional: Transition layout explicitly here, or rely on render pass initialLayout
+    // vulkan_context->transitionImageLayout(command_pool, depth_image, depth_format,
+    //                                     VK_IMAGE_LAYOUT_UNDEFINED,
+    //                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+     spdlog::debug("Depth resources created with format {}.", static_cast<int>(depth_format));
 }
 
 void Renderer::createRenderPass() {
@@ -1209,11 +1288,27 @@ void Renderer::createRenderPass() {
     color_attachment_ref.layout =
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // Layout during the subpass
 
+    // --- Depth Attachment ---
+    VkAttachmentDescription depth_attachment{};
+    depth_attachment.format = findDepthFormat(); // Use the found depth format
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Clear depth at start
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // We don't need depth after drawing
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depth_attachment_ref{};
+    depth_attachment_ref.attachment = 1; // Attachment index 1
+    depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    // --- Subpass ---
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_ref;
-    // pDepthStencilAttachment = nullptr; // No depth buffer yet
+    subpass.pDepthStencilAttachment = &depth_attachment_ref; // Point to the depth attachment reference
 
     // Subpass dependency to handle layout transitions
     VkSubpassDependency dependency{};
@@ -1221,20 +1316,18 @@ void Renderer::createRenderPass() {
         VK_SUBPASS_EXTERNAL;    // Implicit subpass before render pass
     dependency.dstSubpass = 0;  // Our first (and only) subpass
     dependency.srcStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;  // Wait for color output
-                                                        // stage
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT; // Wait for color output and depth test stages
     dependency.srcAccessMask = 0;  // No access needed before
     dependency.dstStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;  // Stage where writes
-                                                        // happen
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT; // Stages that need to wait
     dependency.dstAccessMask =
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;  // We will write to the color
-                                               // attachment
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; // Access needed in the subpass (write to color and depth)
 
+    std::array<VkAttachmentDescription, 2> attachments = {color_attachment, depth_attachment};
     VkRenderPassCreateInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_info.attachmentCount = 1;
-    render_pass_info.pAttachments = &color_attachment;
+    render_pass_info.attachmentCount = static_cast<uint32_t>(attachments.size()); // Now 2 attachments
+    render_pass_info.pAttachments = attachments.data();
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
     render_pass_info.dependencyCount = 1;
@@ -1344,7 +1437,7 @@ void Renderer::createGraphicsPipeline() {
 
     // --- Vertex Input State ---
     auto binding_description = Vertex::getBindingDescription();
-    auto attribute_descriptions = Vertex::getAttributeDescriptions();
+    auto attribute_descriptions = Vertex::getAttributeDescriptions(); // Use updated descriptions
 
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType =
@@ -1352,9 +1445,9 @@ void Renderer::createGraphicsPipeline() {
     vertex_input_info.vertexBindingDescriptionCount = 1;
     vertex_input_info.pVertexBindingDescriptions = &binding_description;
     vertex_input_info.vertexAttributeDescriptionCount =
-        static_cast<uint32_t>(attribute_descriptions.size());
+        static_cast<uint32_t>(attribute_descriptions.size()); // Use size of updated descriptions
     vertex_input_info.pVertexAttributeDescriptions =
-        attribute_descriptions.data();
+        attribute_descriptions.data(); // Use updated descriptions
 
     // --- Input Assembly State ---
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
@@ -1379,9 +1472,9 @@ void Renderer::createGraphicsPipeline() {
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;  // 用于三角形
     rasterizer.lineWidth = 1.0f;  // 点的大小通过 gl_PointSize 控制
-    rasterizer.cullMode = VK_CULL_MODE_NONE; // Or VK_CULL_MODE_BACK_BIT if you want back-face culling
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; // Enable back-face culling
     rasterizer.frontFace =
-        VK_FRONT_FACE_CLOCKWISE;  // Changed from COUNTER_CLOCKWISE to CLOCKWISE
+        VK_FRONT_FACE_COUNTER_CLOCKWISE;  // Use counter-clockwise for standard OBJ winding
     rasterizer.depthBiasEnable = VK_FALSE;
 
     // --- Multisampling State ---
@@ -1391,8 +1484,19 @@ void Renderer::createGraphicsPipeline() {
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    // --- Depth/Stencil State --- (Not used in this example)
-    // VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    // --- Depth/Stencil State --- (Enable Depth Testing)
+    VkPipelineDepthStencilStateCreateInfo depth_stencil{};
+    depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth_stencil.depthTestEnable = VK_TRUE; // Enable depth testing
+    depth_stencil.depthWriteEnable = VK_TRUE; // Enable writing to depth buffer
+    depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS; // Fragments with smaller depth pass (closer)
+    depth_stencil.depthBoundsTestEnable = VK_FALSE; // Optional: Keep fragments within a specific range
+    depth_stencil.minDepthBounds = 0.0f; // Optional
+    depth_stencil.maxDepthBounds = 1.0f; // Optional
+    depth_stencil.stencilTestEnable = VK_FALSE; // Stencil test not used here
+    depth_stencil.front = {}; // Optional
+    depth_stencil.back = {}; // Optional
+
 
     // --- Color Blend State ---
     VkPipelineColorBlendAttachmentState color_blend_attachment{};
@@ -1443,7 +1547,7 @@ void Renderer::createGraphicsPipeline() {
     pipeline_info.pViewportState = &viewport_state;
     pipeline_info.pRasterizationState = &rasterizer;
     pipeline_info.pMultisampleState = &multisampling;
-    pipeline_info.pDepthStencilState = nullptr;
+    pipeline_info.pDepthStencilState = &depth_stencil; // Assign the depth stencil state
     pipeline_info.pColorBlendState = &color_blending;
     pipeline_info.pDynamicState = &dynamic_state;
     pipeline_info.layout = pipeline_layout;
@@ -1470,13 +1574,17 @@ void Renderer::createFramebuffers() {
     swapchain_framebuffers.resize(swapchain_views.size());
 
     for (size_t i = 0; i < swapchain_views.size(); i++) {
-        VkImageView attachments[] = {swapchain_views[i]};
+        // Include both color and depth views
+        std::array<VkImageView, 2> attachments = {
+            swapchain_views[i],
+            depth_image_view // Add the depth image view
+        };
 
         VkFramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebuffer_info.renderPass = render_pass;  // Compatible render pass
-        framebuffer_info.attachmentCount = 1;       // One attachment (color)
-        framebuffer_info.pAttachments = attachments;
+        framebuffer_info.attachmentCount = static_cast<uint32_t>(attachments.size()); // Now 2 attachments
+        framebuffer_info.pAttachments = attachments.data();
         framebuffer_info.width = vulkan_context->getSwapChainExtent().width;
         framebuffer_info.height = vulkan_context->getSwapChainExtent().height;
         framebuffer_info.layers = 1;  // Number of layers in image arrays
@@ -1511,7 +1619,13 @@ void Renderer::createCommandPool() {
 }
 
 void Renderer::createVertexBuffer() {
+    if (vertices.empty()) {
+        spdlog::warn("Vertex data is empty, skipping vertex buffer creation.");
+        return;
+    }
     VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.size();
+    spdlog::debug("Creating vertex buffer of size: {} bytes for {} vertices", buffer_size, vertices.size());
+
 
     // Create a staging buffer (CPU visible)
     VkBuffer staging_buffer;
@@ -1646,7 +1760,13 @@ void Renderer::createTextureSampler() {
 }
 
 void Renderer::createIndexBuffer() {
+     if (indices.empty()) {
+        spdlog::warn("Index data is empty, skipping index buffer creation.");
+        return;
+    }
     VkDeviceSize buffer_size = sizeof(indices[0]) * indices.size();
+    spdlog::debug("Creating index buffer of size: {} bytes for {} indices", buffer_size, indices.size());
+
 
     // Create staging buffer
     VkBuffer staging_buffer;
@@ -1664,7 +1784,7 @@ void Renderer::createIndexBuffer() {
     // Create the actual index buffer (GPU local)
     vulkan_context->createBuffer(
         buffer_size,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, // Add index buffer usage
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         index_buffer, index_buffer_memory);
 
@@ -1818,7 +1938,7 @@ void Renderer::updateUniformBuffer(uint32_t currentImage) {
     float radius = 2.0f;
     float camX = sin(time * glm::radians(45.0f)) * radius;
     float camZ = cos(time * glm::radians(45.0f)) * radius;
-    ubo.view = glm::lookAt(glm::vec3(camX, 0.0f, camZ),   // Eye position
+    ubo.view = glm::lookAt(glm::vec3(camX, 0, camZ),   // Eye position
                            glm::vec3(0.0f, 0.0f, 0.0f),   // Center position
                            glm::vec3(0.0f, 1.0f, 0.0f));  // Up direction
 
@@ -1862,9 +1982,13 @@ void Renderer::recordCommandBuffer(VkCommandBuffer command_buffer,
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = vulkan_context->getSwapChainExtent();
 
-    VkClearValue clear_color = {{{0.1f, 0.1f, 0.1f, 1.0f}}}; // Dark grey clear color
-    render_pass_info.clearValueCount = 1;
-    render_pass_info.pClearValues = &clear_color;
+    // Define clear values for color and depth
+    std::array<VkClearValue, 2> clear_values{};
+    clear_values[0].color = {{0.1f, 0.1f, 0.1f, 1.0f}}; // Dark grey clear color
+    clear_values[1].depthStencil = {1.0f, 0}; // Clear depth to 1.0 (far plane), stencil to 0
+
+    render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size()); // Now 2 clear values
+    render_pass_info.pClearValues = clear_values.data();
 
     vkCmdBeginRenderPass(command_buffer, &render_pass_info,
                          VK_SUBPASS_CONTENTS_INLINE);
@@ -1876,15 +2000,24 @@ void Renderer::recordCommandBuffer(VkCommandBuffer command_buffer,
     // Bind Vertex Buffer
     VkBuffer vertex_buffers[] = {vertex_buffer};
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+    if (vertex_buffer != VK_NULL_HANDLE) { // Add null check
+        vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+    }
+
 
     // Bind Index Buffer
-    vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16); // Use uint16 indices
+    if (index_buffer != VK_NULL_HANDLE) { // Add null check
+        vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    }
+
 
     // Bind Descriptor Set (UBO + Sampler)
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipeline_layout, 0, 1,
-                            &descriptor_sets[image_index], 0, nullptr);
+    if (!descriptor_sets.empty()) { // Add check
+         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                pipeline_layout, 0, 1,
+                                &descriptor_sets[image_index], 0, nullptr);
+    }
+
 
     // Set Dynamic Viewport
     VkViewport viewport{};
@@ -1923,7 +2056,15 @@ void Renderer::recordCommandBuffer(VkCommandBuffer command_buffer,
     }
 
     // Draw Indexed Square
-    vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    if (index_buffer != VK_NULL_HANDLE && !indices.empty()) { // Check if we have indices to draw
+        vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    } else if (vertex_buffer != VK_NULL_HANDLE && !vertices.empty()) { // Fallback to non-indexed draw if no indices but vertices exist
+         spdlog::warn("Drawing non-indexed because index buffer is missing or empty.");
+         vkCmdDraw(command_buffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    } else {
+         spdlog::warn("Skipping draw call because vertex or index data is missing.");
+    }
+
 
     // End Render Pass
     vkCmdEndRenderPass(command_buffer);
@@ -2063,6 +2204,118 @@ void Renderer::drawFrame() {
 
     // Advance to the next frame index
     current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+// --- New Model Loading Function ---
+void Renderer::LoadModel() {
+    std::string model_path_str = "Obj/model_0.obj"; // Or choose another model
+    std::filesystem::path model_path = std::filesystem::absolute(model_path_str);
+    spdlog::info("Attempting to load model from: {}", model_path.string());
+
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    // Material base directory (where .mtl file is expected)
+    std::string base_dir = model_path.parent_path().string();
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, model_path.string().c_str(), base_dir.c_str())) {
+        if (!warn.empty()) {
+            spdlog::warn("TinyObjLoader Warning: {}", warn);
+        }
+        if (!err.empty()) {
+             throw std::runtime_error("TinyObjLoader Error: " + err);
+        }
+         throw std::runtime_error("Failed to load model: " + model_path.string());
+    }
+     if (!warn.empty()) {
+        spdlog::warn("TinyObjLoader Warning: {}", warn);
+    }
+    spdlog::info("Model loaded successfully: {}", model_path.string());
+    spdlog::info("Shapes: {}, Materials: {}, Vertices: {}, Normals: {}, TexCoords: {}",
+                 shapes.size(), materials.size(), attrib.vertices.size() / 3, attrib.normals.size() / 3, attrib.texcoords.size() / 2);
+
+
+    vertices.clear();
+    indices.clear();
+    std::unordered_map<Vertex, uint32_t> unique_vertices{};
+
+    // Iterate over shapes
+    for (const auto& shape : shapes) {
+        // Iterate over faces (triangles)
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); ++f) {
+            size_t fv = shape.mesh.num_face_vertices[f]; // Number of vertices per face (should be 3 for triangles)
+
+            if (fv != 3) {
+                 spdlog::warn("Skipping non-triangle face with {} vertices in shape '{}'", fv, shape.name);
+                 index_offset += fv;
+                 continue;
+            }
+
+
+            // Iterate over vertices in the face
+            for (size_t v = 0; v < fv; ++v) {
+                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                Vertex vertex{};
+
+                // Position
+                vertex.pos = {
+                    attrib.vertices[3 * idx.vertex_index + 0],
+                    attrib.vertices[3 * idx.vertex_index + 1],
+                    attrib.vertices[3 * idx.vertex_index + 2]
+                };
+
+                // Texture Coordinates (check if available)
+                if (idx.texcoord_index >= 0 && !attrib.texcoords.empty()) {
+                    vertex.texCoord = {
+                        attrib.texcoords[2 * idx.texcoord_index + 0],
+                        1.0f - attrib.texcoords[2 * idx.texcoord_index + 1] // Flip V coordinate for Vulkan
+                    };
+                } else {
+                    vertex.texCoord = {0.0f, 0.0f}; // Default UVs if missing
+                }
+
+                // Normals (check if available)
+                 if (idx.normal_index >= 0 && !attrib.normals.empty()) {
+                    vertex.normal = {
+                        attrib.normals[3 * idx.normal_index + 0],
+                        attrib.normals[3 * idx.normal_index + 1],
+                        attrib.normals[3 * idx.normal_index + 2]
+                    };
+                } else {
+                    // Calculate flat normal if missing (simple approach)
+                    // This is basic, better would be weighted normals
+                     tinyobj::index_t idx0 = shape.mesh.indices[index_offset + 0];
+                     tinyobj::index_t idx1 = shape.mesh.indices[index_offset + 1];
+                     tinyobj::index_t idx2 = shape.mesh.indices[index_offset + 2];
+                     glm::vec3 v0 = {attrib.vertices[3 * idx0.vertex_index + 0], attrib.vertices[3 * idx0.vertex_index + 1], attrib.vertices[3 * idx0.vertex_index + 2]};
+                     glm::vec3 v1 = {attrib.vertices[3 * idx1.vertex_index + 0], attrib.vertices[3 * idx1.vertex_index + 1], attrib.vertices[3 * idx1.vertex_index + 2]};
+                     glm::vec3 v2 = {attrib.vertices[3 * idx2.vertex_index + 0], attrib.vertices[3 * idx2.vertex_index + 1], attrib.vertices[3 * idx2.vertex_index + 2]};
+                     vertex.normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                     if (v == 0) spdlog::trace("Calculated flat normal for face {}", f); // Log only once per face
+                }
+
+
+                // Color (use white for now, or derive from material later)
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                // Deduplication
+                if (unique_vertices.count(vertex) == 0) {
+                    unique_vertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(unique_vertices[vertex]);
+            }
+            index_offset += fv;
+        }
+    }
+     spdlog::info("Processed model: Unique Vertices: {}, Indices: {}", vertices.size(), indices.size());
+
+     if (vertices.empty() || indices.empty()) {
+         throw std::runtime_error("Model loading resulted in empty vertex or index data.");
+     }
 }
 
 // --- TriangleApplication Implementation ---

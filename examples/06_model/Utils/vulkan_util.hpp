@@ -7,8 +7,10 @@
 #include <SDL3/SDL_video.h>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE // Vulkan 使用 [0, 1] 深度范围
+#define GLM_ENABLE_EXPERIMENTAL // Needed for hash functions
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp> // Include for glm::vec hash support
 #include <memory>
 #include <optional>  // For optional queue indices
 // #include <stdexcept> // For error handling
@@ -16,6 +18,10 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+
+// Include tinyobjloader
+// #include "tiny_obj_loader.h" // For vertex deduplication - Moved to cpp
+
 #define EnableDebug 1
 #if defined(__APPLE__)
 #define VKB_ENABLE_PORTABILITY 1
@@ -34,9 +40,15 @@ struct UniformBufferObject {
 
 // --- Vertex Data Structure ---
 struct Vertex {
-    glm::vec2 pos;
+    glm::vec3 pos; // Changed to vec3 for 3D position
     glm::vec3 color; // Keep color for now, might remove later if not used
     glm::vec2 texCoord; // Add texture coordinates
+    glm::vec3 normal;   // Add normal for lighting
+
+    // Needed for std::unordered_map
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord && normal == other.normal;
+    }
 
     // Describes how to bind vertex data
     static VkVertexInputBindingDescription getBindingDescription() {
@@ -50,38 +62,51 @@ struct Vertex {
         return binding_description;
     }
 
-    // Describes the attributes within a vertex (position, color, texCoord)
+    // Describes the attributes within a vertex (position, color, texCoord, normal)
     static std::vector<VkVertexInputAttributeDescription>
     getAttributeDescriptions() {
         std::vector<VkVertexInputAttributeDescription> attribute_descriptions(
-            3); // Now 3 attributes
+            4); // Now 4 attributes
 
         // Position attribute
-        attribute_descriptions[0].binding =
-            0;  // From which binding the data comes
-        attribute_descriptions[0].location =
-            0;  // layout(location = 0) in vertex shader
-        attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;  // vec2
-        attribute_descriptions[0].offset =
-            offsetof(Vertex, pos);  // Offset within the struct
+        attribute_descriptions[0].binding = 0;
+        attribute_descriptions[0].location = 0;
+        attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
+        attribute_descriptions[0].offset = offsetof(Vertex, pos);
 
         // Color attribute
         attribute_descriptions[1].binding = 0;
-        attribute_descriptions[1].location =
-            1;  // layout(location = 1) in vertex shader
+        attribute_descriptions[1].location = 1;
         attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;  // vec3
         attribute_descriptions[1].offset = offsetof(Vertex, color);
 
         // Texture Coordinate attribute
         attribute_descriptions[2].binding = 0;
-        attribute_descriptions[2].location =
-            2; // layout(location = 2) in vertex shader
+        attribute_descriptions[2].location = 2;
         attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT; // vec2
         attribute_descriptions[2].offset = offsetof(Vertex, texCoord);
+
+        // Normal attribute
+        attribute_descriptions[3].binding = 0;
+        attribute_descriptions[3].location = 3; // layout(location = 3)
+        attribute_descriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3
+        attribute_descriptions[3].offset = offsetof(Vertex, normal);
 
         return attribute_descriptions;
     }
 };
+
+// Hash function for Vertex struct (needed for std::unordered_map)
+namespace std {
+    template<> struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^
+                   (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                   (hash<glm::vec2>()(vertex.texCoord) << 1) ^
+                   (hash<glm::vec3>()(vertex.normal) << 1);
+        }
+    };
+}
 
 // --- SDL Window Management ---
 struct SDLWindowDeleter {
@@ -195,6 +220,8 @@ public:
                                VkCommandBuffer commandBuffer);
     // NEW: Helper to create image views
     VkImageView createImageView(VkImage image, VkFormat format);
+    // NEW: Helper to create image views with aspect flags
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
     // NEW: Helper to create images
     void createImage(uint32_t width, uint32_t height, VkFormat format,
                      VkImageTiling tiling, VkImageUsageFlags usage,
@@ -206,6 +233,9 @@ public:
     // NEW: Helper to copy buffer to image
     void copyBufferToImage(VkCommandPool pool, VkBuffer buffer, VkImage image,
                            uint32_t width, uint32_t height);
+    // NEW: Helper to find supported depth formats
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    VkFormat findDepthFormat();
 
 #if EnableDebug
     // Debug callback setup
@@ -324,6 +354,11 @@ private:
     void createDescriptorSets();      // 新增：创建描述符集
     void createCommandBuffers();
     void createSyncObjects();  // Semaphores and fences
+    void LoadModel(); // Load model data (if needed)
+    void createDepthResources(); // NEW: Add declaration for depth resources
+    void cleanupDepthResources(); // NEW: Add declaration for depth cleanup
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features); // NEW: Declaration
+    VkFormat findDepthFormat(); // NEW: Declaration
 
     // --- Helper Functions ---
     void updateUniformBuffer(uint32_t currentImage); // 新增：更新Uniform Buffer
@@ -383,24 +418,18 @@ private:
     bool framebuffer_resized =
         false;  // Flag set by Application on resize events
 
-    // --- Triangle and Point Vertex Data --- NEW: Square vertices
-    const std::vector<Vertex> vertices = {
-        // Position             Color                TexCoord (V coordinate flipped)
-        {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}, // Bottom-left vertex, UV (0,1) -> Bottom-left of texture
-        {{0.5f, -0.5f},  {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}, // Bottom-right vertex, UV (1,1) -> Bottom-right of texture
-        {{0.5f, 0.5f},   {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}}, // Top-right vertex, UV (1,0) -> Top-right of texture
-        {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}}  // Top-left vertex, UV (0,0) -> Top-left of texture
-    };
-
-    // NEW: Indices for the square
-    const std::vector<uint16_t> indices = {
-        0, 1, 2, 
-        2, 3, 0
-    };
+    // --- Triangle and Point Vertex Data --- NEW: Model data
+    std::vector<Vertex> vertices; // Changed from const, populated by LoadModel
+    std::vector<uint32_t> indices; // Changed from const and uint16_t, populated by LoadModel
 
     // NEW: Index buffer resources
     VkBuffer index_buffer{VK_NULL_HANDLE};
     VkDeviceMemory index_buffer_memory{VK_NULL_HANDLE};
+
+    // --- Depth Resources --- NEW
+    VkImage depth_image{VK_NULL_HANDLE};
+    VkDeviceMemory depth_image_memory{VK_NULL_HANDLE};
+    VkImageView depth_image_view{VK_NULL_HANDLE};
 
 };
 

@@ -1,4 +1,4 @@
-add_executable(06_model main.cpp Utils/vulkan_util.cpp)
+add_executable(06_model main.cpp Utils/vulkan_util.cpp Utils/tiny_obj_loader.cc)
 find_package(Vulkan REQUIRED)
 # Link tinyobjloader
 target_link_libraries(06_model PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes spdlog::spdlog glm::glm)
