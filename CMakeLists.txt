@@ -11,17 +11,16 @@ add_subdirectory(libs/SDL EXCLUDE_FROM_ALL)
 # endif()
 find_package(Vulkan REQUIRED)
 
-add_executable(MiniRenderer src/main.cpp)
+# add_executable(MiniRenderer src/main.cpp)
 add_library(minirenderer_includes INTERFACE)
 target_include_directories(minirenderer_includes INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/SDL/include
     ${Vulkan_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/libs/stb
 )
 
-target_link_libraries(MiniRenderer PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes stb)
-target_compile_definitions(MiniRenderer PUBLIC SDL_MAIN_USE_CALLBACKS)
+# target_link_libraries(MiniRenderer PRIVATE SDL3::SDL3 Vulkan::Vulkan minirenderer_includes stb)
+# target_compile_definitions(MiniRenderer PUBLIC SDL_MAIN_USE_CALLBACKS)
 
 add_subdirectory(libs/spdlog)
 add_subdirectory(examples)
@@ -37,5 +36,4 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/SDL/include
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/spdlog/include
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/imgui
-    ${CMAKE_CURRENT_SOURCE_DIR}/libs/stb
 )
