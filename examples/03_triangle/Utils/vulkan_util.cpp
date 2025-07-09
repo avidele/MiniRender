@@ -1,6 +1,6 @@
 /*
  * @author: Avidel
- * @LastEditors: Avidel
+ * @LastEditors: nolanyzhang
  */
 #include "vulkan_util.hpp"
 
@@ -1039,9 +1039,8 @@ VkShaderModule Renderer::createShaderModule(const std::vector<char>& code) {
 }
 
 void Renderer::createGraphicsPipeline() {
-    // 使用绝对路径来加载着色器文件
-    std::string shader_dir =
-        "/Users/avidel/Documents/Prog/MiniRender/examples/03_triangle/shaders/";
+    // 使用相对路径来加载着色器文件
+    std::string shader_dir = "shaders/";
     auto vert_shader_code = readFile(shader_dir + "vert.spv");
     auto frag_shader_code = readFile(shader_dir + "frag.spv");
 
