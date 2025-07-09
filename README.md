@@ -2,7 +2,7 @@
 
 <!--
  * @author: Avidel
- * @LastEditors: Avidel
+ * @LastEditors: nolanyzhang
 -->
 <p align="center">
   <img src="https://img.shields.io/badge/language-C%2B%2B20-yellow.svg">
@@ -14,6 +14,13 @@
 This is some examples for learning SDL3 and Vulkan.
 
 MiniRender will start when my examples finish.
+
+## Instructions for use
+```bash
+git submodule update --init --recursive
+cmake -B build .
+cmake --build build
+```
 
 ## 01_colorful_renderer
 ![alt text](md/colorful_renderer.png)
